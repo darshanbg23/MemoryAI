@@ -176,13 +176,13 @@ YOUR RESPONSE:"""
         print("\n" + "="*80)
         print("🔍 API DEBUG - CALLING GEMINI API")
         print("="*80)
-        print(f"Model: gemini-2.5-flash-lite")
+        print(f"Model: gemini-2.5-flash")
         print(f"Max Output Tokens: 2500")
         print(f"Prompt Length: {len(prompt)} characters")
         print("-"*80)
         
         response = client.models.generate_content(
-            model="gemini-2.5-flash-lite",
+            model="gemini-2.5-flash",
             contents=prompt,
             config={
                 "temperature": 0.7,

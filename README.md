@@ -165,9 +165,33 @@ Create a `.env` file in the project root with:
 GEMINI_API_KEY=your_api_key_here
 ```
 
+### AI Model Configuration
+
+**Tested Models**: This chatbot has been tested with:
+- **Gemini 2.5 Flash** (Primary model - recommended)
+- **Gemini 2.5 Flash Lite** (Lightweight alternative)
+
+You can use any Gemini model that your API supports. To change the model:
+
+1. Open [generation/response_generator.py](generation/response_generator.py)
+2. Find the line that specifies the model (around line 185):
+   ```python
+   response = client.models.generate_content(
+       model="gemini-2.5-flash",  # ← Change this line
+       contents=prompt,
+       config={...}
+   )
+   ```
+3. Replace `"gemini-2.5-flash"` with your desired model:
+   - `"gemini-2.5-flash-lite"` for the lightweight version
+   - `"gemini-1.5-pro"` for other available models
+   - Or any other supported Gemini model
+
+**Note**: Ensure your API key has access to the model you select.
+
 ### Customizing Tone Instructions
 
-Edit `generation/response_generator.py` to customize AI responses:
+Edit [generation/response_generator.py](generation/response_generator.py) to customize AI responses:
 
 - Modify tone-specific system prompts
 - Add new conversation styles
