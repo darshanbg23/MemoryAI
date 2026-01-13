@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.Python
+
+# Virtual Environment
+genai_env/
+venv/
+env/
+
+# Sensitive Data
+conversation_history.json
+user_profiles.json
+*.env
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+*.p12
+credentials/
+secrets/
+config/local.json
+.streamlit/secrets.toml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+*.log.*
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+.tmp/
