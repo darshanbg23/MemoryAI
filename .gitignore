@@ -1,46 +1,41 @@
-# Python
+# Bytecode and runtime caches
 __pycache__/
-*.pyc
-*.pyo
-.Python
+*.py[cod]
 
-# Virtual Environment
+# Virtual environment
 genai_env/
-venv/
-env/
 
-# Sensitive Data
-conversation_history.json
-user_profiles.json
-*.env
+# Environment variables and secrets
 .env
-.env.local
-.env.*.local
-*.key
-*.pem
-*.p12
-credentials/
-secrets/
-config/local.json
+.env*.local
+!.env.example
 .streamlit/secrets.toml
 
-# IDE
+# SQLite databases and sidecars
+chatbot.db
+chatbot.db-wal
+chatbot.db-shm
+*.db
+*.db-wal
+*.db-shm
+
+# IDE and editor files
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# OS
+# Operating system files
 .DS_Store
 Thumbs.db
 
-# Logs
+# Logs and temporary files
 *.log
-*.log.*
 logs/
-
-# Temporary files
 *.tmp
 *.temp
-.tmp/
+
+# Local scratch and working documents
+prompt.txt
+local/
