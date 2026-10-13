@@ -1,78 +1,179 @@
-import pandas as pd
-import json
+import sys
 import os
 
-MEMORY_FILE = "conversation_history.json"
-memory = []
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-def load_from_file():
-    """Load memory from file"""
-    try:
-        if os.path.exists(MEMORY_FILE):
-            with open(MEMORY_FILE, 'r') as f:
-                return json.load(f)
-    except Exception as e:
-        print(f"Error loading memory: {e}")
-    return []
+from database import get_connection
 
-def save_to_file():
-    """Save memory to file"""
-    try:
-        with open(MEMORY_FILE, 'w') as f:
-            json.dump(memory, f, indent=2)
-    except Exception as e:
-        print(f"Error saving memory: {e}")
+USER_ID = "user"
+BOT_ID = "bot"
 
-def store_message(user, text):
-    """Store a message in memory with user identification"""
-    global memory
-    memory.append({"user": user, "text": text})
-    save_to_file()
+def create_conversation(title="New Chat"):
+    from datetime import datetime
+    conn = get_connection()
+    conv_id = f"conv_{int(datetime.now().timestamp() * 1000)}"
+    now = datetime.now().isoformat()
+    conn.execute(
+        "INSERT INTO conversations (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
+        (conv_id, title, now, now),
+    )
+    conn.commit()
+    return conv_id
 
-def get_memory():
-    """Get all stored memory (for admin purposes only)"""
-    return memory
+def get_conversations():
+    conn = get_connection()
+    rows = conn.execute("""
+        SELECT c.id, c.title, c.created_at, c.updated_at,
+               COUNT(m.id) AS message_count
+        FROM conversations c
+        LEFT JOIN messages m ON m.conversation_id = c.id
+        GROUP BY c.id
+        ORDER BY c.updated_at DESC
+    """).fetchall()
+    return [
+        {
+            "id": row["id"],
+            "title": row["title"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+            "message_count": row["message_count"],
+        }
+        for row in rows
+    ]
 
-def get_user_memory(user_id):
-    """
-    Get ONLY the specified user's memory
-    This ensures complete data isolation
-    Handles both old format (user/bot) and new format (user/bot_user)
-    """
-    # Filter for user's messages and bot responses to that user
-    user_specific = []
-    for msg in memory:
-        # Include user's own messages
-        if msg.get("user") == user_id:
-            user_specific.append(msg)
-        # Include bot responses specifically for this user (new format)
-        elif msg.get("user") == f"bot_{user_id}":
-            user_specific.append(msg)
-        # Include generic bot responses for backward compatibility (old format)
-        # Only include if this is user1 (to avoid duplication for other users)
-        elif msg.get("user") == "bot" and user_id == "user1":
-            user_specific.append(msg)
-    
-    return user_specific
+def get_conversation(conversation_id):
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT id, title, created_at, updated_at FROM conversations WHERE id = ?",
+        (conversation_id,),
+    ).fetchone()
+    if not row:
+        return None
+    return {
+        "id": row["id"],
+        "title": row["title"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
 
-def clear_memory():
-    """Clear all memory (admin function)"""
-    global memory
-    memory = []
-    save_to_file()
-    if os.path.exists(MEMORY_FILE):
-        os.remove(MEMORY_FILE)
+def update_conversation_title(conversation_id, title):
+    conn = get_connection()
+    conn.execute(
+        "UPDATE conversations SET title = ? WHERE id = ?",
+        (title, conversation_id),
+    )
+    conn.commit()
 
-def clear_user_memory(user_id):
-    """
-    Clear ONLY the specified user's memory
-    Preserves other users' data
-    """
-    global memory
-    # Remove only this user's messages
-    memory = [msg for msg in memory 
-              if msg.get("user") != user_id and msg.get("user") != f"bot_{user_id}"]
-    save_to_file()
+def get_conversation_messages(conversation_id):
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT id, user, text, timestamp FROM messages WHERE conversation_id = ? ORDER BY id ASC",
+        (conversation_id,),
+    ).fetchall()
+    return [{"id": row["id"], "user": row["user"], "text": row["text"], "timestamp": row["timestamp"]} for row in rows]
 
-# Load existing memory on module import
-memory = load_from_file()
+def clear_conversation_messages(conversation_id):
+    from datetime import datetime
+    conn = get_connection()
+    conn.execute("DELETE FROM messages WHERE conversation_id = ?", (conversation_id,))
+    now = datetime.now().isoformat()
+    conn.execute("UPDATE conversations SET updated_at = ? WHERE id = ?", (now, conversation_id))
+    conn.commit()
+
+def delete_conversation(conversation_id):
+    conn = get_connection()
+    conn.execute("DELETE FROM messages WHERE conversation_id = ?", (conversation_id,))
+    conn.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))
+    conn.commit()
+
+def store_message(role, text, conversation_id="default"):
+    from datetime import datetime
+    conn = get_connection()
+    now = datetime.now().isoformat()
+    conv_id = conversation_id or "default"
+
+    conn.execute(
+        "INSERT OR IGNORE INTO conversations (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
+        (conv_id, "New Chat", now, now),
+    )
+
+    cursor = conn.execute(
+        "INSERT INTO messages (user, text, timestamp, conversation_id) VALUES (?, ?, ?, ?)",
+        (role, text, now, conv_id),
+    )
+
+    if role == USER_ID:
+        row = conn.execute("SELECT title FROM conversations WHERE id = ?", (conv_id,)).fetchone()
+        if row and row["title"] in ("New Chat", "New Conversation"):
+            auto_title = text[:36] + ("..." if len(text) > 36 else "")
+            conn.execute(
+                "UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?",
+                (auto_title, now, conv_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE conversations SET updated_at = ? WHERE id = ?",
+                (now, conv_id),
+            )
+    else:
+        conn.execute(
+            "UPDATE conversations SET updated_at = ? WHERE id = ?",
+            (now, conv_id),
+        )
+
+    conn.commit()
+    return cursor.lastrowid
+
+def get_all_messages():
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT user, text FROM messages ORDER BY id"
+    ).fetchall()
+    return [{"user": row["user"], "text": row["text"]} for row in rows]
+
+def get_recent_messages(limit=20):
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT id, user, text FROM ("
+        "  SELECT id, user, text FROM messages ORDER BY id DESC LIMIT ?"
+        ") ORDER BY id ASC",
+        (limit,),
+    ).fetchall()
+    return [{"id": row["id"], "user": row["user"], "text": row["text"]} for row in rows]
+
+def get_message_count():
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT COUNT(*) AS cnt FROM messages WHERE user = ?", (USER_ID,)
+    ).fetchone()
+    return row["cnt"]
+
+def clear_all_messages():
+    conn = get_connection()
+    conn.execute("DELETE FROM embeddings")
+    conn.execute("DELETE FROM messages")
+    conn.execute("DELETE FROM conversations")
+    conn.commit()
+
+def get_total_message_count():
+    conn = get_connection()
+    row = conn.execute("SELECT COUNT(*) AS cnt FROM messages").fetchone()
+    return row["cnt"]
+
+def get_oldest_messages(count):
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT id, user, text FROM messages ORDER BY id ASC LIMIT ?",
+        (count,),
+    ).fetchall()
+    return [{"id": row["id"], "user": row["user"], "text": row["text"]} for row in rows]
+
+def delete_oldest_messages(keep_recent):
+    conn = get_connection()
+    conn.execute(
+        "DELETE FROM messages WHERE id NOT IN ("
+        "  SELECT id FROM messages ORDER BY id DESC LIMIT ?"
+        ")",
+        (keep_recent,),
+    )
+    conn.commit()
