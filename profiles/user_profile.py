@@ -1,127 +1,87 @@
 import json
+import sys
 import os
 from datetime import datetime
 
-# Global profiles dictionary: user_id -> profile dict
-profiles = {}
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# File path for profiles
-PROFILES_FILE = 'user_profiles.json'
+from database import get_connection
 
-# Available tone options
+USER_ID = "user"
 AVAILABLE_TONES = ["Friendly", "Technical", "Casual"]
 
-# Maximum number of user profiles allowed
-MAX_PROFILES = 10
+def ensure_profile_exists():
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT 1 FROM user_profiles WHERE user_id = ?", (USER_ID,)
+    ).fetchone()
+    if row is None:
+        conn.execute(
+            """INSERT INTO user_profiles
+               (user_id, display_name, tone, preferences, conversation_count, first_interaction)
+               VALUES (?, ?, ?, ?, 0, ?)""",
+            (USER_ID, "User", "Friendly", json.dumps({}), datetime.now().isoformat()),
+        )
+        conn.commit()
 
-def load_profiles():
-    global profiles
-    if os.path.exists(PROFILES_FILE):
-        try:
-            with open(PROFILES_FILE, 'r') as f:
-                profiles = json.load(f)
-        except Exception as e:
-            print(f"Error loading profiles: {e}")
-            profiles = {}
-
-def save_profiles():
-    try:
-        with open(PROFILES_FILE, 'w') as f:
-            json.dump(profiles, f, indent=4)
-    except Exception as e:
-        print(f"Error saving profiles: {e}")
-
-# Load profiles on startup
-load_profiles()
-
-def create_user_profile(user_id, display_name, tone="Friendly", preferences=None):
-    """
-    Create a custom user profile with display name and tone preference
-    Returns a tuple: (success: bool, message: str)
-    """
-    # Check if user already exists
-    if user_id in profiles:
-        return False, "User ID already exists!"
-    
-    # Check if maximum profiles limit reached
-    if len(profiles) >= MAX_PROFILES:
-        return False, f"Maximum limit of {MAX_PROFILES} profiles reached. Please delete an existing profile to create a new one."
-    
-    # Validate tone
-    if tone not in AVAILABLE_TONES:
-        tone = "Friendly"
-    
-    if preferences is None:
-        preferences = {}
-    
-    profile = {
-        "user_id": user_id,
-        "display_name": display_name,
-        "tone": tone,
-        "preferences": preferences,
-        "conversation_count": 0,
-        "first_interaction": datetime.now().isoformat()
+def get_profile():
+    ensure_profile_exists()
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT * FROM user_profiles WHERE user_id = ?", (USER_ID,)
+    ).fetchone()
+    return {
+        "user_id": row["user_id"],
+        "display_name": row["display_name"],
+        "tone": row["tone"],
+        "preferences": json.loads(row["preferences"]),
+        "conversation_count": row["conversation_count"],
+        "first_interaction": row["first_interaction"],
     }
-    profiles[user_id] = profile
-    save_profiles()
-    return True, f"✅ Profile created successfully!"
 
-def get_user_profile(user_id):
-    """Get user profile by user_id"""
-    return profiles.get(user_id, None)
+def get_tone():
+    ensure_profile_exists()
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT tone FROM user_profiles WHERE user_id = ?", (USER_ID,)
+    ).fetchone()
+    return row["tone"] if row else "Friendly"
 
-def get_user_tone(user_id):
-    """Get user's tone preference"""
-    profile = profiles.get(user_id, None)
-    if profile:
-        return profile.get("tone", "Friendly")
-    return "Friendly"
+def get_display_name():
+    ensure_profile_exists()
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT display_name FROM user_profiles WHERE user_id = ?", (USER_ID,)
+    ).fetchone()
+    return row["display_name"] if row else "User"
 
-def get_user_display_name(user_id):
-    """Get user's display name"""
-    profile = profiles.get(user_id, None)
-    if profile:
-        return profile.get("display_name", user_id)
-    return user_id
-
-def get_all_users():
-    """Get all available user IDs"""
-    return list(profiles.keys())
-
-def update_user_profile(user_id, display_name=None, tone=None):
-    """Update user's display name and/or tone"""
-    if user_id not in profiles:
-        return False
-    
+def update_profile(display_name=None, tone=None):
+    ensure_profile_exists()
+    conn = get_connection()
     if display_name:
-        profiles[user_id]["display_name"] = display_name
-    
+        conn.execute(
+            "UPDATE user_profiles SET display_name = ? WHERE user_id = ?",
+            (display_name, USER_ID),
+        )
     if tone and tone in AVAILABLE_TONES:
-        profiles[user_id]["tone"] = tone
-    
-    save_profiles()
+        conn.execute(
+            "UPDATE user_profiles SET tone = ? WHERE user_id = ?",
+            (tone, USER_ID),
+        )
+    conn.commit()
     return True
 
-def update_user_preferences(user_id, new_preferences):
-    """Update user's preferences"""
-    if user_id in profiles:
-        profiles[user_id]["preferences"].update(new_preferences)
-        save_profiles()
-        return True
-    return False
-
-def delete_user_profile(user_id):
-    """Delete a user profile"""
-    if user_id in profiles:
-        del profiles[user_id]
-        save_profiles()
-        return True
-    return False
-
-def get_profile_count():
-    """Get the current number of user profiles"""
-    return len(profiles)
-
-def get_max_profile_limit():
-    """Get the maximum number of profiles allowed"""
-    return MAX_PROFILES
+def update_preferences(new_preferences):
+    ensure_profile_exists()
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT preferences FROM user_profiles WHERE user_id = ?", (USER_ID,)
+    ).fetchone()
+    current = json.loads(row["preferences"]) if row else {}
+    current.update(new_preferences)
+    conn.execute(
+        "UPDATE user_profiles SET preferences = ? WHERE user_id = ?",
+        (json.dumps(current), USER_ID),
+    )
+    conn.commit()
+    return True
