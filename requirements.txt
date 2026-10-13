@@ -1,7 +1,3 @@
-transformers
-sentence-transformers
 streamlit
-torch
 google-genai
 python-dotenv
-pandas
