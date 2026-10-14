@@ -1,5 +1,5 @@
 <p align="center">
-  <h1 align="center">MemoryAI</h1>
+  <h1 align="center">MemoryAI: AI Chatbot with Long-Term Memory</h1>
 </p>
 
 <p align="center">
